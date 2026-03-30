@@ -56,6 +56,12 @@ Lifecycle:
 
 Processes all `PENDING` payments and updates ledger balances.
 
+### Force Failed Branch (Low Funds)
+
+`POST /rails/payments/{id}/force-failure/low-funds?debtorBalance=1.00`
+
+For test scenarios, this endpoint sets the debtor ledger balance below the payment amount and runs settlement immediately so the payment moves to `FAILED` with an insufficient funds reason.
+
 ### Run Reconciliation
 
 `POST /rails/reconciliation/run`

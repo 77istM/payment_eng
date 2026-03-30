@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +74,17 @@ public class RailSimulatorController {
     @GetMapping(value = "/payments/{id}/audit", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<List<PaymentAuditLog>> getAuditTrail(@PathVariable Long id) {
         return ResponseEntity.ok(railPaymentService.listAuditLogs(id));
+    }
+
+    @PostMapping(value = "/payments/{id}/force-failure/low-funds", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> forceLowFundsFailure(@PathVariable Long id,
+                                                  @RequestParam(name = "debtorBalance", defaultValue = "0.00") BigDecimal debtorBalance) {
+        try {
+            RailPayment payment = railPaymentService.forceLowFundsFailure(id, debtorBalance);
+            return ResponseEntity.ok(payment);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
     }
 
     private PaymentRail parseRail(String rail) {

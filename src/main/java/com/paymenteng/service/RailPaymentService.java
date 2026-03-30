@@ -130,6 +130,36 @@ public class RailPaymentService {
         return payment;
     }
 
+    @Transactional
+    public RailPayment forceLowFundsFailure(Long paymentId, BigDecimal debtorBalance) {
+        RailPayment payment = railPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
+
+        if (payment.getState() != PaymentLifecycleState.PENDING) {
+            throw new IllegalStateException("Payment must be in PENDING state to force failure");
+        }
+
+        BigDecimal safeBalance = debtorBalance == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : debtorBalance.setScale(2, RoundingMode.HALF_UP);
+
+        if (safeBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Debtor balance cannot be negative");
+        }
+        if (safeBalance.compareTo(payment.getAmount()) >= 0) {
+            throw new IllegalArgumentException("Debtor balance must be lower than payment amount to force low-funds failure");
+        }
+
+        LedgerAccount debtor = loadOrCreateDebtor(payment.getDebtorAccount());
+        debtor.setOpeningBalance(safeBalance);
+        debtor.setCurrentBalance(safeBalance);
+        ledgerAccountRepository.save(debtor);
+
+        logEvent(payment.getId(), "FORCED_LOW_FUNDS",
+                "Debtor account " + payment.getDebtorAccount() + " set to balance " + safeBalance);
+        return processSettlement(paymentId);
+    }
+
     @Transactional(readOnly = true)
     public RailPayment getPayment(Long id) {
         return railPaymentRepository.findById(id)

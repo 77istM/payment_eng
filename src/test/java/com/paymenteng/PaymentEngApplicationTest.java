@@ -297,4 +297,23 @@ class PaymentEngApplicationTest {
             .andExpect(jsonPath("$[0].eventType").exists())
             .andExpect(jsonPath("$[*].eventType", org.hamcrest.Matchers.hasItem("STATE_CHANGE")));
         }
+
+    @Test
+    void rails_forceLowFundsEndpoint_forcesFailedBranch() throws Exception {
+        String response = mockMvc.perform(post("/rails/payments")
+                        .header("Idempotency-Key", "idem-force-fail-001")
+                        .param("rail", "SEPA")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(VALID_PAIN001))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String id = com.jayway.jsonpath.JsonPath.read(response, "$.id").toString();
+
+        mockMvc.perform(post("/rails/payments/" + id + "/force-failure/low-funds")
+                        .param("debtorBalance", "1.00"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("FAILED"))
+                .andExpect(jsonPath("$.failureReason").value("Insufficient funds in debtor account"));
+    }
 }
