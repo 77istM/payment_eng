@@ -10,6 +10,7 @@ import com.paymenteng.parser.Pain001Parser;
 import com.paymenteng.repository.LedgerAccountRepository;
 import com.paymenteng.repository.PaymentAuditLogRepository;
 import com.paymenteng.repository.RailPaymentRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +35,7 @@ public class RailPaymentService {
     private final LedgerAccountRepository ledgerAccountRepository;
     private final PaymentAuditLogRepository auditLogRepository;
     private final Pain001Parser pain001Parser;
+    private final ConcurrentHashMap<Long, AtomicInteger> plannedTransientFailures = new ConcurrentHashMap<>();
 
     public RailPaymentService(RailPaymentRepository railPaymentRepository,
                               LedgerAccountRepository ledgerAccountRepository,
@@ -49,10 +53,11 @@ public class RailPaymentService {
             throw new IllegalArgumentException("Idempotency key is required");
         }
 
-        RailPayment existing = railPaymentRepository.findByIdempotencyKey(idempotencyKey.trim()).orElse(null);
+        String normalizedKey = idempotencyKey.trim();
+        RailPayment existing = railPaymentRepository.findByIdempotencyKey(normalizedKey).orElse(null);
         if (existing != null) {
             logEvent(existing.getId(), "DUPLICATE_DETECTED",
-                    "Replayed request with idempotency key " + idempotencyKey.trim());
+                "Replayed request with idempotency key " + normalizedKey);
             return existing;
         }
 
@@ -62,7 +67,7 @@ public class RailPaymentService {
         BigDecimal amount = instruction.getAmount().setScale(2, RoundingMode.HALF_UP);
 
         RailPayment payment = new RailPayment();
-        payment.setIdempotencyKey(idempotencyKey.trim());
+        payment.setIdempotencyKey(normalizedKey);
         payment.setRail(rail);
         payment.setPaymentReference(nonBlank(instruction.getMessageId(), instruction.getInstructionId(), "UNKNOWN-REF"));
         payment.setInstructionId(nonBlank(instruction.getInstructionId(), "N/A"));
@@ -73,7 +78,15 @@ public class RailPaymentService {
         payment.setCreditorAccount(instruction.getCreditorAccount());
         payment.setExpectedDebtorDelta(amount.negate());
         payment.setExpectedCreditorDelta(amount);
-        payment = railPaymentRepository.save(payment);
+        try {
+            payment = railPaymentRepository.save(payment);
+        } catch (DataIntegrityViolationException ex) {
+            RailPayment duplicate = railPaymentRepository.findByIdempotencyKey(normalizedKey)
+                .orElseThrow(() -> ex);
+            logEvent(duplicate.getId(), "DUPLICATE_DETECTED",
+                "Concurrent replay detected for idempotency key " + normalizedKey);
+            return duplicate;
+        }
 
         logEvent(payment.getId(), "INITIATED", "Payment initiated on rail " + rail.name());
         transitionState(payment, PaymentLifecycleState.PENDING, "Queued for settlement");
@@ -92,12 +105,14 @@ public class RailPaymentService {
 
     @Transactional
     public RailPayment processSettlement(Long paymentId) {
-        RailPayment payment = railPaymentRepository.findById(paymentId)
+        RailPayment payment = railPaymentRepository.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
 
         if (payment.getState() != PaymentLifecycleState.PENDING) {
             return payment;
         }
+
+        maybeThrowTransientFailure(paymentId);
 
         LedgerAccount debtor = loadOrCreateDebtor(payment.getDebtorAccount());
         LedgerAccount creditor = loadOrCreateCreditor(payment.getCreditorAccount());
@@ -176,6 +191,21 @@ public class RailPaymentService {
         return auditLogRepository.findByPaymentIdOrderByCreatedAtAsc(paymentId);
     }
 
+    @Transactional
+    public void planTransientFailures(Long paymentId, int count) {
+        if (count <= 0) {
+            plannedTransientFailures.remove(paymentId);
+            return;
+        }
+        plannedTransientFailures.put(paymentId, new AtomicInteger(count));
+        logEvent(paymentId, "TRANSIENT_FAILURE_PLAN", "Configured " + count + " transient failures");
+    }
+
+    @Transactional
+    public void logAsyncEvent(Long paymentId, int attempt, String eventType, String details) {
+        logEvent(paymentId, eventType, "attempt=" + attempt + " " + details);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> reconcileBalances() {
         List<RailPayment> payments = railPaymentRepository.findAll();
@@ -232,13 +262,30 @@ public class RailPaymentService {
     }
 
     private LedgerAccount loadOrCreateDebtor(String accountId) {
-        return ledgerAccountRepository.findById(accountId)
+        return ledgerAccountRepository.findByAccountIdForUpdate(accountId)
                 .orElseGet(() -> ledgerAccountRepository.save(new LedgerAccount(accountId, DEFAULT_DEBTOR_OPENING_BALANCE)));
     }
 
     private LedgerAccount loadOrCreateCreditor(String accountId) {
-        return ledgerAccountRepository.findById(accountId)
+        return ledgerAccountRepository.findByAccountIdForUpdate(accountId)
                 .orElseGet(() -> ledgerAccountRepository.save(new LedgerAccount(accountId, DEFAULT_CREDITOR_OPENING_BALANCE)));
+    }
+
+    private void maybeThrowTransientFailure(Long paymentId) {
+        AtomicInteger remaining = plannedTransientFailures.get(paymentId);
+        if (remaining == null) {
+            return;
+        }
+
+        int left = remaining.getAndDecrement();
+        if (left > 0) {
+            if (left == 1) {
+                plannedTransientFailures.remove(paymentId);
+            }
+            throw new TransientSettlementException("Injected transient failure for payment " + paymentId + " (remaining=" + (left - 1) + ")");
+        }
+
+        plannedTransientFailures.remove(paymentId);
     }
 
     private void transitionState(RailPayment payment, PaymentLifecycleState targetState, String details) {
