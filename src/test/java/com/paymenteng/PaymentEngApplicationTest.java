@@ -231,7 +231,7 @@ class PaymentEngApplicationTest {
                 .header("Idempotency-Key", "idem-001")
                 .contentType(MediaType.APPLICATION_XML)
                 .content(VALID_PAIN001))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.paymentReference").value("MSG-1001"))
             .andExpect(jsonPath("$.state").value("PENDING"))
             .andExpect(jsonPath("$.rail").value("SEPA"));
@@ -244,7 +244,7 @@ class PaymentEngApplicationTest {
                 .header("Idempotency-Key", "idem-dup")
                 .contentType(MediaType.APPLICATION_XML)
                 .content(VALID_PAIN001))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn().getResponse().getContentAsString();
 
         mockMvc.perform(post("/rails/payments")
@@ -252,7 +252,7 @@ class PaymentEngApplicationTest {
                 .header("Idempotency-Key", "idem-dup")
                 .contentType(MediaType.APPLICATION_XML)
                 .content(VALID_PAIN001))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(content().json(first));
         }
 
@@ -263,7 +263,7 @@ class PaymentEngApplicationTest {
                 .header("Idempotency-Key", "idem-fps-001")
                 .contentType(MediaType.APPLICATION_XML)
                 .content(VALID_PAIN001))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.rail").value("FASTER_PAYMENTS"));
 
         mockMvc.perform(post("/rails/settlements/run"))
@@ -287,7 +287,7 @@ class PaymentEngApplicationTest {
                 .param("rail", "SEPA")
                 .contentType(MediaType.APPLICATION_XML)
                 .content(VALID_PAIN001))
-            .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
             .andReturn().getResponse().getContentAsString();
 
         String id = com.jayway.jsonpath.JsonPath.read(response, "$.id").toString();
@@ -305,7 +305,7 @@ class PaymentEngApplicationTest {
                         .param("rail", "SEPA")
                         .contentType(MediaType.APPLICATION_XML)
                         .content(VALID_PAIN001))
-                .andExpect(status().isOk())
+            .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
 
         String id = com.jayway.jsonpath.JsonPath.read(response, "$.id").toString();

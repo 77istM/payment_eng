@@ -1,10 +1,14 @@
 package com.paymenteng.controller;
 
 import com.paymenteng.model.PaymentAuditLog;
+import com.paymenteng.model.PaymentEventMessage;
 import com.paymenteng.model.PaymentRail;
 import com.paymenteng.model.RailPayment;
+import com.paymenteng.service.AsyncPaymentEventService;
+import com.paymenteng.service.AvailabilityGateService;
 import com.paymenteng.service.RailPaymentService;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,19 +29,31 @@ import java.util.Map;
 public class RailSimulatorController {
 
     private final RailPaymentService railPaymentService;
+    private final AsyncPaymentEventService asyncPaymentEventService;
+    private final AvailabilityGateService availabilityGateService;
 
-    public RailSimulatorController(RailPaymentService railPaymentService) {
+    public RailSimulatorController(RailPaymentService railPaymentService,
+                                   AsyncPaymentEventService asyncPaymentEventService,
+                                   AvailabilityGateService availabilityGateService) {
         this.railPaymentService = railPaymentService;
+        this.asyncPaymentEventService = asyncPaymentEventService;
+        this.availabilityGateService = availabilityGateService;
     }
 
     @PostMapping(value = "/payments", consumes = MediaType.APPLICATION_XML_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> initiatePayment(@RequestBody String pain001Xml,
                                              @RequestHeader("Idempotency-Key") String idempotencyKey,
                                              @RequestParam(name = "rail", defaultValue = "SEPA") String rail) {
+        if (!availabilityGateService.isAcceptingTraffic()) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Service is draining and refusing new traffic"));
+        }
+
         try {
             PaymentRail selectedRail = parseRail(rail);
             RailPayment payment = railPaymentService.initiatePayment(pain001Xml, idempotencyKey, selectedRail);
-            return ResponseEntity.ok(payment);
+            asyncPaymentEventService.publishSettlementRequested(payment.getId());
+            return ResponseEntity.accepted().body(payment);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         }
@@ -85,6 +101,46 @@ public class RailSimulatorController {
         } catch (IllegalArgumentException | IllegalStateException ex) {
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         }
+    }
+
+    @PostMapping(value = "/payments/{id}/simulate-transient-failures", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> simulateTransientFailures(@PathVariable Long id,
+                                                       @RequestParam(name = "count", defaultValue = "1") int count) {
+        if (count < 0) {
+            return ResponseEntity.badRequest().body(Map.of("error", "count must be >= 0"));
+        }
+        railPaymentService.planTransientFailures(id, count);
+        return ResponseEntity.ok(Map.of("paymentId", id, "configuredFailures", count));
+    }
+
+    @GetMapping(value = "/ops/queue/stats", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> queueStats() {
+        return ResponseEntity.ok(asyncPaymentEventService.queueStats());
+    }
+
+    @GetMapping(value = "/ops/queue/dlq", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<PaymentEventMessage>> deadLetters() {
+        return ResponseEntity.ok(asyncPaymentEventService.deadLetters());
+    }
+
+    @PostMapping(value = "/ops/drain/start", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> startDrain() {
+        availabilityGateService.startDrain();
+        return ResponseEntity.ok(Map.of("acceptingTraffic", availabilityGateService.isAcceptingTraffic()));
+    }
+
+    @PostMapping(value = "/ops/drain/stop", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> stopDrain() {
+        availabilityGateService.stopDrain();
+        return ResponseEntity.ok(Map.of("acceptingTraffic", availabilityGateService.isAcceptingTraffic()));
+    }
+
+    @GetMapping(value = "/ops/health", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> operationalHealth() {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("acceptingTraffic", availabilityGateService.isAcceptingTraffic());
+        response.put("queue", asyncPaymentEventService.queueStats());
+        return ResponseEntity.ok(response);
     }
 
     private PaymentRail parseRail(String rail) {
