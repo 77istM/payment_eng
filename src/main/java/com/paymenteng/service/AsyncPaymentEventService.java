@@ -59,7 +59,7 @@ public class AsyncPaymentEventService {
                                     @Value("${payment.async.poll-timeout-ms:100}") long pollTimeoutMs,
                                     @Value("${payment.async.retry-scheduler-threads:2}") int retrySchedulerThreadCount) {
         this.railPaymentService = railPaymentService;
-        this.consumerCount = Math.max(1, consumerCount);
+                        this.consumerCount = Math.max(0, consumerCount);
         this.maxRetries = Math.max(0, maxRetries);
         this.initialBackoffMs = Math.max(1, initialBackoffMs);
         this.backoffMultiplier = Math.max(1.0d, backoffMultiplier);
@@ -72,6 +72,10 @@ public class AsyncPaymentEventService {
     @PostConstruct
     public void start() {
         if (!running.compareAndSet(false, true)) {
+            return;
+        }
+
+        if (consumerCount == 0) {
             return;
         }
 
@@ -104,18 +108,18 @@ public class AsyncPaymentEventService {
     }
 
     public Map<String, Object> queueStats() {
-        return Map.of(
-                "consumers", consumerCount,
-                "ready", running.get(),
-                "queueDepth", queue.size(),
-                "queueCapacity", queueCapacity,
-                "queueRemainingCapacity", queue.remainingCapacity(),
-                "consumed", consumedCount.get(),
-                "retried", retryCount.get(),
-                "deadLetterDepth", deadLetterQueue.size(),
-                "inFlight", inFlightEventStartedAt.size(),
-                "pollTimeoutMs", pollTimeoutMs,
-                "retrySchedulerThreads", retrySchedulerThreadCount
+        return Map.ofEntries(
+            Map.entry("consumers", consumerCount),
+            Map.entry("ready", running.get()),
+            Map.entry("queueDepth", queue.size()),
+            Map.entry("queueCapacity", queueCapacity),
+            Map.entry("queueRemainingCapacity", queue.remainingCapacity()),
+            Map.entry("consumed", consumedCount.get()),
+            Map.entry("retried", retryCount.get()),
+            Map.entry("deadLetterDepth", deadLetterQueue.size()),
+            Map.entry("inFlight", inFlightEventStartedAt.size()),
+            Map.entry("pollTimeoutMs", pollTimeoutMs),
+            Map.entry("retrySchedulerThreads", retrySchedulerThreadCount)
         );
     }
 

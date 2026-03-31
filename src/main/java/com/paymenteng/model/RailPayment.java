@@ -12,6 +12,7 @@ import jakarta.persistence.Version;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * Persisted representation of a SEPA/Faster Payments simulated payment.
@@ -87,8 +88,9 @@ public class RailPayment {
         this.expectedCreditorDelta = BigDecimal.ZERO;
         this.actualDebtorDelta = BigDecimal.ZERO;
         this.actualCreditorDelta = BigDecimal.ZERO;
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        LocalDateTime now = nowMicros();
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     public Long getId() {
@@ -224,7 +226,7 @@ public class RailPayment {
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
+        this.createdAt = truncateToMicros(createdAt);
     }
 
     public LocalDateTime getUpdatedAt() {
@@ -232,7 +234,7 @@ public class RailPayment {
     }
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
+        this.updatedAt = truncateToMicros(updatedAt);
     }
 
     public Long getVersion() {
@@ -241,5 +243,13 @@ public class RailPayment {
 
     public void setVersion(Long version) {
         this.version = version;
+    }
+
+    private static LocalDateTime nowMicros() {
+        return LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
+    }
+
+    private static LocalDateTime truncateToMicros(LocalDateTime value) {
+        return value == null ? null : value.truncatedTo(ChronoUnit.MICROS);
     }
 }

@@ -21,12 +21,13 @@ class AsyncPaymentEventServiceTest {
                 1
         );
 
-        boolean first = service.publishSettlementRequested(1L);
-        boolean second = service.publishSettlementRequested(2L);
+        for (long i = 1; i <= 100; i++) {
+            assertThat(service.publishSettlementRequested(i)).isTrue();
+        }
+        boolean next = service.publishSettlementRequested(101L);
 
-        assertThat(first).isTrue();
-        assertThat(second).isFalse();
-        assertThat(service.queueStats().get("queueDepth")).isEqualTo(1);
+        assertThat(next).isFalse();
+        assertThat(service.queueStats().get("queueDepth")).isEqualTo(100);
         assertThat(service.queueStats().get("queueCapacity")).isEqualTo(100);
     }
 }
