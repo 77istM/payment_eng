@@ -139,3 +139,28 @@ Suggested success criteria:
 - `POST /store`
 - `GET /store`
 - `GET /store/{id}`
+
+## Java and Maven Troubleshooting
+
+This project targets Java 17. If you see an error like:
+
+`Apache Maven 4.x requires Java 17 or newer to run`
+
+use the repo helper script that auto-detects a Java 17+ installation and runs Maven with it:
+
+```bash
+bash scripts/mvn-java17.sh test
+```
+
+For full build including integration tests and reports:
+
+```bash
+bash scripts/mvn-java17.sh verify
+```
+
+If no Java 17 installation is found, inspect candidates with:
+
+```bash
+update-alternatives --list java
+ls -d /usr/lib/jvm/*
+```
