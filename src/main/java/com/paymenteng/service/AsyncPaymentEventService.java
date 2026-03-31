@@ -36,8 +36,11 @@ public class AsyncPaymentEventService {
     private final int maxRetries;
     private final long initialBackoffMs;
     private final double backoffMultiplier;
+    private final int queueCapacity;
+    private final long pollTimeoutMs;
+    private final int retrySchedulerThreadCount;
 
-    private final BlockingQueue<PaymentEventMessage> queue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<PaymentEventMessage> queue;
     private final List<PaymentEventMessage> deadLetterQueue = new CopyOnWriteArrayList<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong consumedCount = new AtomicLong(0);
@@ -51,12 +54,19 @@ public class AsyncPaymentEventService {
                                     @Value("${payment.async.consumer-count:4}") int consumerCount,
                                     @Value("${payment.async.max-retries:5}") int maxRetries,
                                     @Value("${payment.async.initial-backoff-ms:100}") long initialBackoffMs,
-                                    @Value("${payment.async.backoff-multiplier:2.0}") double backoffMultiplier) {
+                                    @Value("${payment.async.backoff-multiplier:2.0}") double backoffMultiplier,
+                                    @Value("${payment.async.queue-capacity:10000}") int queueCapacity,
+                                    @Value("${payment.async.poll-timeout-ms:100}") long pollTimeoutMs,
+                                    @Value("${payment.async.retry-scheduler-threads:2}") int retrySchedulerThreadCount) {
         this.railPaymentService = railPaymentService;
         this.consumerCount = Math.max(1, consumerCount);
         this.maxRetries = Math.max(0, maxRetries);
         this.initialBackoffMs = Math.max(1, initialBackoffMs);
         this.backoffMultiplier = Math.max(1.0d, backoffMultiplier);
+        this.queueCapacity = Math.max(1, queueCapacity);
+        this.pollTimeoutMs = Math.max(10, pollTimeoutMs);
+        this.retrySchedulerThreadCount = Math.max(1, retrySchedulerThreadCount);
+        this.queue = new LinkedBlockingQueue<>(this.queueCapacity);
     }
 
     @PostConstruct
@@ -66,7 +76,7 @@ public class AsyncPaymentEventService {
         }
 
         this.consumerExecutor = Executors.newScheduledThreadPool(consumerCount);
-        this.retryScheduler = Executors.newSingleThreadScheduledExecutor();
+        this.retryScheduler = Executors.newScheduledThreadPool(retrySchedulerThreadCount);
 
         for (int i = 0; i < consumerCount; i++) {
             consumerExecutor.execute(this::consumerLoop);
@@ -86,22 +96,26 @@ public class AsyncPaymentEventService {
         }
     }
 
-    public void publishSettlementRequested(Long paymentId) {
+    public boolean publishSettlementRequested(Long paymentId) {
         if (paymentId == null) {
-            return;
+            return false;
         }
-        queue.offer(new PaymentEventMessage(paymentId, PaymentEventType.SETTLEMENT_REQUESTED, 0));
+        return queue.offer(new PaymentEventMessage(paymentId, PaymentEventType.SETTLEMENT_REQUESTED, 0));
     }
 
     public Map<String, Object> queueStats() {
-        return Map.of(
-                "consumers", consumerCount,
-                "ready", running.get(),
-                "queueDepth", queue.size(),
-                "consumed", consumedCount.get(),
-                "retried", retryCount.get(),
-                "deadLetterDepth", deadLetterQueue.size(),
-                "inFlight", inFlightEventStartedAt.size()
+        return Map.ofEntries(
+                Map.entry("consumers", (Object) consumerCount),
+                Map.entry("ready", (Object) running.get()),
+                Map.entry("queueDepth", (Object) queue.size()),
+                Map.entry("queueCapacity", (Object) queueCapacity),
+                Map.entry("queueRemainingCapacity", (Object) queue.remainingCapacity()),
+                Map.entry("consumed", (Object) consumedCount.get()),
+                Map.entry("retried", (Object) retryCount.get()),
+                Map.entry("deadLetterDepth", (Object) deadLetterQueue.size()),
+                Map.entry("inFlight", (Object) inFlightEventStartedAt.size()),
+                Map.entry("pollTimeoutMs", (Object) pollTimeoutMs),
+                Map.entry("retrySchedulerThreads", (Object) retrySchedulerThreadCount)
         );
     }
 
@@ -112,7 +126,7 @@ public class AsyncPaymentEventService {
     private void consumerLoop() {
         while (running.get()) {
             try {
-                PaymentEventMessage event = queue.poll(300, TimeUnit.MILLISECONDS);
+                PaymentEventMessage event = queue.poll(pollTimeoutMs, TimeUnit.MILLISECONDS);
                 if (event == null) {
                     continue;
                 }

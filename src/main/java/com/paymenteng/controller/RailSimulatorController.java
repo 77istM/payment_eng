@@ -52,7 +52,11 @@ public class RailSimulatorController {
         try {
             PaymentRail selectedRail = parseRail(rail);
             RailPayment payment = railPaymentService.initiatePayment(pain001Xml, idempotencyKey, selectedRail);
-            asyncPaymentEventService.publishSettlementRequested(payment.getId());
+            boolean queued = asyncPaymentEventService.publishSettlementRequested(payment.getId());
+            if (!queued) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.of("error", "Settlement queue is full, retry later"));
+            }
             return ResponseEntity.accepted().body(payment);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
