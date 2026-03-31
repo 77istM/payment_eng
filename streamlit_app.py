@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from base64 import b64encode
 
 import requests
@@ -109,7 +109,7 @@ def add_history_entry(
     st.session_state.history_counter += 1
     entry = {
         "id": st.session_state.history_counter,
-        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "label": label,
         "method": method,
         "path": path,
