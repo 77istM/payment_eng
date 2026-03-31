@@ -139,3 +139,122 @@ Suggested success criteria:
 - `POST /store`
 - `GET /store`
 - `GET /store/{id}`
+
+## Java and Maven Troubleshooting
+
+This project targets Java 17. If you see an error like:
+
+`Apache Maven 4.x requires Java 17 or newer to run`
+
+use the repo helper script that auto-detects a Java 17+ installation and runs Maven with it:
+
+```bash
+bash scripts/mvn-java17.sh test
+```
+
+or from repository root:
+
+```bash
+bash mvn-java17.sh test
+```
+
+For full build including integration tests and reports:
+
+```bash
+bash scripts/mvn-java17.sh verify
+```
+
+If no Java 17 installation is found, inspect candidates with:
+
+```bash
+update-alternatives --list java
+ls -d /usr/lib/jvm/*
+```
+
+If `apt-get update` fails with a Yarn GPG key error (`NO_PUBKEY 62D54FD4003F6525`), temporarily disable Yarn repo and install Java 17:
+
+```bash
+sudo mv /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn.list.disabled 2>/dev/null || true
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jdk
+```
+
+## Quick Start: Testing In Codespaces Terminal
+
+Use this from the GitHub Codespaces terminal for a fast test workflow.
+
+### 0) Verify Java 17+ is available
+
+```bash
+java -version
+```
+
+If Java 17+ is missing, install it:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jdk
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+### 1) Move to repo root
+
+```bash
+cd /workspaces/payment_eng
+```
+
+### 2) Ensure helper script is executable
+
+```bash
+chmod +x scripts/mvn-java17.sh
+```
+
+### 3) Run all tests
+
+```bash
+bash scripts/mvn-java17.sh test
+```
+
+### 4) Run one test class while iterating
+
+```bash
+bash scripts/mvn-java17.sh -Dtest=MT103ValidatorTest test
+```
+
+### 5) Run integration tests only
+
+```bash
+bash scripts/mvn-java17.sh -Dtest='*IT' test
+```
+
+### 6) Optional API smoke test in terminal
+
+Start the app in background:
+
+```bash
+bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 & echo $! >/tmp/payment-eng.pid
+sleep 8
+curl -fsS http://localhost:8080/actuator/health
+```
+
+Run MT103 parse endpoint check:
+
+```bash
+curl -fsS -X POST http://localhost:8080/parse \
+	-H 'Content-Type: text/plain' \
+	--data-binary $':20:TXREF20231001\n:23B:CRED\n:32A:231001USD12500,00\n:50K:/123456789\nJOHN DOE\n:59:/987654321\nJANE SMITH\n:71A:SHA\n'
+```
+
+Stop background app:
+
+```bash
+[[ -f /tmp/payment-eng.pid ]] && kill "$(cat /tmp/payment-eng.pid)" || true
+rm -f /tmp/payment-eng.pid
+```
+
+If startup fails, inspect logs:
+
+```bash
+tail -n 120 /tmp/payment-eng.log
+```
