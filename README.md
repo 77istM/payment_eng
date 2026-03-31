@@ -164,3 +164,21 @@ If no Java 17 installation is found, inspect candidates with:
 update-alternatives --list java
 ls -d /usr/lib/jvm/*
 ```
+
+## Quick Start (5-Command Smoke Test)
+
+Run these commands in order for a daily sanity check:
+
+```bash
+cd /workspaces/payment_eng
+chmod +x scripts/mvn-java17.sh
+bash scripts/mvn-java17.sh -q test
+bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 & echo $! >/tmp/payment-eng.pid && sleep 8 && curl -fsS http://localhost:8080/actuator/health && curl -fsS -X POST http://localhost:8080/parse -H 'Content-Type: text/plain' --data-binary $':20:TXREF20231001\n:23B:CRED\n:32A:231001USD12500,00\n:50K:/123456789\nJOHN DOE\n:59:/987654321\nJANE SMITH\n:71A:SHA\n'
+kill "$(cat /tmp/payment-eng.pid)" && rm -f /tmp/payment-eng.pid
+```
+
+If command 4 fails, inspect startup logs:
+
+```bash
+tail -n 120 /tmp/payment-eng.log
+```
