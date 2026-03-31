@@ -25,8 +25,7 @@ java_major() {
 }
 
 ensure_java17() {
-[[ -f /tmp/payment-eng.pid ]] && kill "$(cat /tmp/payment-eng.pid)" || true
-rm -f /tmp/payment-eng.pid  local candidates=()
+  local candidates=()
 
   add_candidate() {
     local path="$1"
