@@ -140,6 +140,42 @@ Suggested success criteria:
 - `GET /store`
 - `GET /store/{id}`
 
+## Streamlit Test GUI (Cloud Ready)
+
+A Streamlit test console is included to exercise MT103, rail simulation, and ops endpoints from a browser.
+
+Files:
+- `streamlit_app.py`
+- `requirements.txt`
+
+### Run locally
+
+1. Install Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Start the Spring Boot backend (default `http://localhost:8080`).
+
+3. Start the GUI:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+### Deploy on Streamlit Cloud
+
+1. Push this repository branch to GitHub.
+2. In Streamlit Cloud, create a new app from the repository.
+3. Set app file path to `streamlit_app.py`.
+4. Keep `requirements.txt` as dependency source.
+5. After deploy, set **Backend base URL** in the app sidebar to your reachable backend URL.
+
+Notes:
+- The GUI sends raw requests to your backend APIs and displays HTTP status, headers, and response payloads.
+- If backend is not publicly reachable, expose it through your preferred tunnel/reverse proxy first.
+
 ## Java and Maven Troubleshooting
 
 This project targets Java 17. If you see an error like:
