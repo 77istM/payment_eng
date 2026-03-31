@@ -183,6 +183,21 @@ sudo apt-get install -y openjdk-17-jdk
 
 Use this from the GitHub Codespaces terminal for a fast test workflow.
 
+### 0) Verify Java 17+ is available
+
+```bash
+java -version
+```
+
+If Java 17+ is missing, install it:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jdk
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
 ### 1) Move to repo root
 
 ```bash

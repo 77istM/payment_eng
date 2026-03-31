@@ -15,8 +15,20 @@ java_major() {
   # Handles formats like:
   #   openjdk version "17.0.12" ...
   #   openjdk version "11.0.14" ...
+  #   openjdk 21.0.4 2024-07-16
+  #   java 17.0.10 2024-01-16 LTS
   local version_token
   version_token="$(echo "$version_output" | awk -F '"' '/version/ {print $2; exit}')"
+  if [[ -z "$version_token" ]]; then
+    version_token="$(echo "$version_output" | awk '{
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^[0-9]+(\.[0-9]+)*$/) {
+          print $i
+          exit
+        }
+      }
+    }')"
+  fi
   if [[ -z "$version_token" ]]; then
     echo 0
     return
