@@ -63,7 +63,7 @@ public class AsyncPaymentEventService {
         this.maxRetries = Math.max(0, maxRetries);
         this.initialBackoffMs = Math.max(1, initialBackoffMs);
         this.backoffMultiplier = Math.max(1.0d, backoffMultiplier);
-        this.queueCapacity = Math.max(1, queueCapacity);
+        this.queueCapacity = Math.max(100, queueCapacity);
         this.pollTimeoutMs = Math.max(10, pollTimeoutMs);
         this.retrySchedulerThreadCount = Math.max(1, retrySchedulerThreadCount);
         this.queue = new LinkedBlockingQueue<>(this.queueCapacity);
@@ -104,18 +104,18 @@ public class AsyncPaymentEventService {
     }
 
     public Map<String, Object> queueStats() {
-        return Map.ofEntries(
-                Map.entry("consumers", (Object) consumerCount),
-                Map.entry("ready", (Object) running.get()),
-                Map.entry("queueDepth", (Object) queue.size()),
-                Map.entry("queueCapacity", (Object) queueCapacity),
-                Map.entry("queueRemainingCapacity", (Object) queue.remainingCapacity()),
-                Map.entry("consumed", (Object) consumedCount.get()),
-                Map.entry("retried", (Object) retryCount.get()),
-                Map.entry("deadLetterDepth", (Object) deadLetterQueue.size()),
-                Map.entry("inFlight", (Object) inFlightEventStartedAt.size()),
-                Map.entry("pollTimeoutMs", (Object) pollTimeoutMs),
-                Map.entry("retrySchedulerThreads", (Object) retrySchedulerThreadCount)
+        return Map.of(
+                "consumers", consumerCount,
+                "ready", running.get(),
+                "queueDepth", queue.size(),
+                "queueCapacity", queueCapacity,
+                "queueRemainingCapacity", queue.remainingCapacity(),
+                "consumed", consumedCount.get(),
+                "retried", retryCount.get(),
+                "deadLetterDepth", deadLetterQueue.size(),
+                "inFlight", inFlightEventStartedAt.size(),
+                "pollTimeoutMs", pollTimeoutMs,
+                "retrySchedulerThreads", retrySchedulerThreadCount
         );
     }
 

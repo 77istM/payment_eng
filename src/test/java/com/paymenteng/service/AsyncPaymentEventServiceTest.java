@@ -27,6 +27,6 @@ class AsyncPaymentEventServiceTest {
         assertThat(first).isTrue();
         assertThat(second).isFalse();
         assertThat(service.queueStats().get("queueDepth")).isEqualTo(1);
-        assertThat(service.queueStats().get("queueCapacity")).isEqualTo(1);
+        assertThat(service.queueStats().get("queueCapacity")).isEqualTo(100);
     }
 }
