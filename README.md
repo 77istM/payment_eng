@@ -217,77 +217,100 @@ sudo apt-get update
 sudo apt-get install -y openjdk-17-jdk
 ```
 
-## Quick Start: Testing In Codespaces Terminal
+## Quick Start: Testing in Codespaces Terminal
 
-Use this from the GitHub Codespaces terminal for a fast test workflow.
+Copy and paste these blocks directly into your Codespaces terminal.
 
-### 0) Verify Java 17+ is available
-
-```bash
-java -version
-```
-
-If Java 17+ is missing, install it:
+### Block A: Setup + run all tests
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-export PATH="$JAVA_HOME/bin:$PATH"
-```
+set -euo pipefail
 
-### 1) Move to repo root
-
-```bash
 cd /workspaces/payment_eng
-```
-
-### 2) Ensure helper script is executable
-
-```bash
 chmod +x scripts/mvn-java17.sh
-```
 
-### 3) Run all tests
+# Verify Java (project requires Java 17+)
+java -version
 
-```bash
+# If Java 17+ is NOT installed, uncomment and run the next 4 lines:
+# sudo apt-get update
+# sudo apt-get install -y openjdk-17-jdk
+# export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# export PATH="$JAVA_HOME/bin:$PATH"
+
+# Run full unit/integration test suite
 bash scripts/mvn-java17.sh test
 ```
 
-### 4) Run one test class while iterating
+### Block B: Fast iteration commands
 
 ```bash
+cd /workspaces/payment_eng
+
+# Run one test class
 bash scripts/mvn-java17.sh -Dtest=MT103ValidatorTest test
-```
 
-### 5) Run integration tests only
-
-```bash
+# Run integration tests only
 bash scripts/mvn-java17.sh -Dtest='*IT' test
 ```
 
-### 6) Optional API smoke test in terminal
-
-Start the app in background:
+### Block C: API smoke test (start app, test endpoints, stop app)
 
 ```bash
-bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 & echo $! >/tmp/payment-eng.pid
-sleep 8
+set -euo pipefail
+
+cd /workspaces/payment_eng
+
+# Start app in background
+bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 &
+echo $! >/tmp/payment-eng.pid
+
+# Wait for app to become healthy (max ~60s)
+for i in {1..30}; do
+	if curl -fsS http://localhost:8080/actuator/health >/dev/null; then
+		break
+	fi
+	sleep 2
+done
+
+# 1) Health check
 curl -fsS http://localhost:8080/actuator/health
-```
+echo
 
-Run MT103 parse endpoint check:
-
-```bash
+# 2) MT103 parse check
 curl -fsS -X POST http://localhost:8080/parse \
 	-H 'Content-Type: text/plain' \
 	--data-binary $':20:TXREF20231001\n:23B:CRED\n:32A:231001USD12500,00\n:50K:/123456789\nJOHN DOE\n:59:/987654321\nJANE SMITH\n:71A:SHA\n'
-```
+echo
 
-Stop background app:
+# 3) Rail simulator initiate payment (pain.001)
+curl -fsS -X POST 'http://localhost:8080/rails/payments?rail=SEPA' \
+	-H 'Content-Type: application/xml' \
+	-H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" \
+	--data-binary '<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">
+	<CstmrCdtTrfInitn>
+		<GrpHdr><MsgId>MSG-1001</MsgId></GrpHdr>
+		<PmtInf>
+			<PmtInfId>PMTINF-1</PmtInfId>
+			<DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></DbtrAcct>
+			<CdtTrfTxInf>
+				<PmtId><InstrId>INST-1001</InstrId><EndToEndId>E2E-1001</EndToEndId></PmtId>
+				<Amt><InstdAmt Ccy="EUR">250.00</InstdAmt></Amt>
+				<CdtrAcct><Id><IBAN>DE44500105175407324931</IBAN></Id></CdtrAcct>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>'
+echo
 
-```bash
-[[ -f /tmp/payment-eng.pid ]] && kill "$(cat /tmp/payment-eng.pid)" || true
+# Optional: inspect logs if needed
+tail -n 80 /tmp/payment-eng.log || true
+
+# Stop app
+if [[ -f /tmp/payment-eng.pid ]]; then
+	kill "$(cat /tmp/payment-eng.pid)" || true
+fi
 rm -f /tmp/payment-eng.pid
 ```
 
