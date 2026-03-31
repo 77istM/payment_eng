@@ -179,19 +179,66 @@ sudo apt-get update
 sudo apt-get install -y openjdk-17-jdk
 ```
 
-## Quick Start (5-Command Smoke Test)
+## Quick Start: Testing In Codespaces Terminal
 
-Run these commands in order for a daily sanity check:
+Use this from the GitHub Codespaces terminal for a fast test workflow.
+
+### 1) Move to repo root
 
 ```bash
 cd /workspaces/payment_eng
-chmod +x scripts/mvn-java17.sh
-bash scripts/mvn-java17.sh -q test
-bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 & echo $! >/tmp/payment-eng.pid && sleep 8 && curl -fsS http://localhost:8080/actuator/health && curl -fsS -X POST http://localhost:8080/parse -H 'Content-Type: text/plain' --data-binary $':20:TXREF20231001\n:23B:CRED\n:32A:231001USD12500,00\n:50K:/123456789\nJOHN DOE\n:59:/987654321\nJANE SMITH\n:71A:SHA\n'
-[[ -f /tmp/payment-eng.pid ]] && kill "$(cat /tmp/payment-eng.pid)" || true; rm -f /tmp/payment-eng.pid
 ```
 
-If command 4 fails, inspect startup logs:
+### 2) Ensure helper script is executable
+
+```bash
+chmod +x scripts/mvn-java17.sh
+```
+
+### 3) Run all tests
+
+```bash
+bash scripts/mvn-java17.sh test
+```
+
+### 4) Run one test class while iterating
+
+```bash
+bash scripts/mvn-java17.sh -Dtest=MT103ValidatorTest test
+```
+
+### 5) Run integration tests only
+
+```bash
+bash scripts/mvn-java17.sh -Dtest='*IT' test
+```
+
+### 6) Optional API smoke test in terminal
+
+Start the app in background:
+
+```bash
+bash scripts/mvn-java17.sh -q spring-boot:run >/tmp/payment-eng.log 2>&1 & echo $! >/tmp/payment-eng.pid
+sleep 8
+curl -fsS http://localhost:8080/actuator/health
+```
+
+Run MT103 parse endpoint check:
+
+```bash
+curl -fsS -X POST http://localhost:8080/parse \
+	-H 'Content-Type: text/plain' \
+	--data-binary $':20:TXREF20231001\n:23B:CRED\n:32A:231001USD12500,00\n:50K:/123456789\nJOHN DOE\n:59:/987654321\nJANE SMITH\n:71A:SHA\n'
+```
+
+Stop background app:
+
+```bash
+[[ -f /tmp/payment-eng.pid ]] && kill "$(cat /tmp/payment-eng.pid)" || true
+rm -f /tmp/payment-eng.pid
+```
+
+If startup fails, inspect logs:
 
 ```bash
 tail -n 120 /tmp/payment-eng.log
