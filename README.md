@@ -175,6 +175,8 @@ streamlit run streamlit_app.py
 Notes:
 - The GUI sends raw requests to your backend APIs and displays HTTP status, headers, and response payloads.
 - If backend is not publicly reachable, expose it through your preferred tunnel/reverse proxy first.
+- The sidebar supports simple auth modes for secured environments: `Bearer`, `Basic`, and custom `API Key` header.
+- The `History` tab stores recent requests and supports one-click replay for repeatable test runs.
 
 ## Java and Maven Troubleshooting
 
