@@ -152,6 +152,12 @@ use the repo helper script that auto-detects a Java 17+ installation and runs Ma
 bash scripts/mvn-java17.sh test
 ```
 
+or from repository root:
+
+```bash
+bash mvn-java17.sh test
+```
+
 For full build including integration tests and reports:
 
 ```bash
@@ -163,6 +169,14 @@ If no Java 17 installation is found, inspect candidates with:
 ```bash
 update-alternatives --list java
 ls -d /usr/lib/jvm/*
+```
+
+If `apt-get update` fails with a Yarn GPG key error (`NO_PUBKEY 62D54FD4003F6525`), temporarily disable Yarn repo and install Java 17:
+
+```bash
+sudo mv /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn.list.disabled 2>/dev/null || true
+sudo apt-get update
+sudo apt-get install -y openjdk-17-jdk
 ```
 
 ## Quick Start (5-Command Smoke Test)
